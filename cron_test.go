@@ -77,6 +77,27 @@ func TestAddWhileRunning(t *testing.T) {
 	}
 }
 
+// Add a job, start cron, expect it runs.
+func TestRecoveringJobRunning(t *testing.T) {
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+
+	cron := New()
+	cron.AddFunc("* * * * * ?", func() {
+		defer wg.Done()
+		panic("Test recovering job after panic")
+	})
+	cron.Start()
+	defer cron.Stop()
+
+	// Give cron 2 seconds to run our job (which is always activated).
+	select {
+	case <-time.After(ONE_SECOND):
+		t.FailNow()
+	case <-wait(wg):
+	}
+}
+
 // Test timing with Entries.
 func TestSnapshotEntries(t *testing.T) {
 	wg := &sync.WaitGroup{}
