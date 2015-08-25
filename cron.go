@@ -4,6 +4,7 @@ package cron
 
 import (
 	"log"
+	"runtime"
 	"sort"
 	"time"
 )
@@ -12,11 +13,12 @@ import (
 // specified by the schedule. It may be started, stopped, and the entries may
 // be inspected while running.
 type Cron struct {
-	entries  []*Entry
-	stop     chan struct{}
-	add      chan *Entry
-	snapshot chan []*Entry
-	running  bool
+	entries      []*Entry
+	stop         chan struct{}
+	add          chan *Entry
+	snapshot     chan []*Entry
+	running      bool
+	PanicHandler func()
 }
 
 // Job is an interface for submitted cron jobs.
@@ -75,6 +77,8 @@ func New() *Cron {
 		stop:     make(chan struct{}),
 		snapshot: make(chan []*Entry),
 		running:  false,
+
+		PanicHandler: defaultPanicHandler,
 	}
 }
 
@@ -128,9 +132,11 @@ func (c *Cron) Start() {
 	go c.run()
 }
 
-func recoverJob() {
+func defaultPanicHandler() {
 	if recovered := recover(); recovered != nil {
-		log.Printf("ERROR: %v\n", recovered)
+		stack := make([]byte, 10240)
+		runtime.Stack(stack, true)
+		log.Printf("ERROR: %v\n%s\n", recovered, stack)
 	}
 }
 
@@ -164,7 +170,7 @@ func (c *Cron) run() {
 					break
 				}
 				go func(e *Entry) {
-					defer recoverJob()
+					defer c.PanicHandler()
 					e.Job.Run()
 				}(e)
 				e.Prev = e.Next
